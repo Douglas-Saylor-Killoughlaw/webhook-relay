@@ -17,17 +17,19 @@ store = {}
 
 logger = logging.getLogger('tornado.access')
 
+
 class IndexHandler(web.RequestHandler):
     def get(self):
         self.render("index.html")
 
+
 class SocketHandler(websocket.WebSocketHandler):
-    
+
     def check_origin(self, origin):
         return True
 
-    def open(self):  
-        self.timeout = None            
+    def open(self):
+        self.timeout = None
         self.callback = PeriodicCallback(self.send_hello, 20000)
         self.callback.start()
         tenant = self.request.uri.split('/subscribe/')[1]
@@ -38,20 +40,20 @@ class SocketHandler(websocket.WebSocketHandler):
     # keep the connection alive through proxies as much as possible
     def send_hello(self):
         self.ping('ping')
-        
-    # see if there are any messages to forward on          
+
+    # see if there are any messages to forward on
     def flush_messages(self, tenant):
-        if tenant in store: 
+        if tenant in store:
             messages = store[tenant]
-            for payload in messages:                
-                self.write_message(json.dumps(payload, ensure_ascii=False))                    
+            for payload in messages:
+                self.write_message(json.dumps(payload, ensure_ascii=False))
             logger.debug("Messages of tenant %s flushed", tenantName(tenant))
         store[tenant] = []
 
     def on_close(self):
         self.callback.stop()
         tenant = self.request.uri.split('/subscribe/')[1]
-        if tenant in clients: 
+        if tenant in clients:
             del clients[tenant]
             logger.info("Tenant %s removed from list of clients", tenantName(tenant))
 
@@ -69,23 +71,24 @@ class ApiHandler(web.RequestHandler):
         endpoint = "/" + "/".join(publishedUri.split('/')[1:])
         headers = {}
         for header in self.request.headers:
-            headers[header] = self.request.headers[header]        
+            headers[header] = self.request.headers[header]
         payload = {'headers': headers, 'requestPath': endpoint, 'body': self.request.body}
-        
+
         if tenant in clients:
             logger.debug("Publishing events to %s", tenantName(tenant))
             clients[tenant].write_message(json.dumps(payload, ensure_ascii=False))
         else:
             logger.debug("Storing events for %s", tenantName(tenant))
             self.store_message(tenant, payload)
-                
+
         self.finish()
 
-    # Keep for later        
+    # Keep for later
     def store_message(self, tenant, payload):
         if tenant in store:
             store[tenant].append(payload)
             logger.debug("Storing event for tenant %s - number of events stored = %d", tenantName(tenant), len(store[tenant]))
+
 
 def tenantName(tenant):
     return "-".join(tenant.split('-')[:-1])
@@ -94,6 +97,7 @@ def tenantName(tenant):
 class ObfuscateSecretFormatter(object):
     def format(self, record):
         return datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " - " + re.sub("([A-Za-z0-9]+)\-\w{20}", r"\1-********************", record.getMessage())
+
 
 def setupLogger():
     logger.propagate = False
